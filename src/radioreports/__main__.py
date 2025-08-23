@@ -1,9 +1,10 @@
 # src/radioreports/__main__.py
 import argparse
 
+from .audit_report import main as audit_main
 from .daily_report import main as daily_main
 from .weekly_report import main as weekly_main
-from .audit_report import main as audit_main
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -18,6 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     return p
 
+
 def main() -> None:
     args = build_parser().parse_args()
     if args.command == "daily":
@@ -28,6 +30,7 @@ def main() -> None:
         audit_main()
     else:
         raise SystemExit(2)
+
 
 if __name__ == "__main__":
     main()

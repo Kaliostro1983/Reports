@@ -1,10 +1,12 @@
 # src/radioreports/logging_cfg.py
 from __future__ import annotations
+
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 FMT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
 
 def setup_logging(level: str = "INFO", log_dir: str | Path = "output") -> None:
     """Базове налаштування логування у консоль + файл з ротацією."""

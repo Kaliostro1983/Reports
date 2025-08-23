@@ -1,21 +1,19 @@
 from __future__ import annotations
 
-from pathlib import Path
-from datetime import datetime
-import os
-from typing import Optional
-
 import logging
-from .logging_cfg import setup_logging
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
 
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 
-from . import file_utils, docx_utils, report_utils
-from .settings import AREAS, TB_CONFIG, FOOTER_SIGN, FOOTER_TEXT_1, FOOTER_TEXT_2
-from . import settings
+from . import docx_utils, file_utils, report_utils, settings
+from .logging_cfg import setup_logging
+from .settings import AREAS, FOOTER_SIGN, FOOTER_TEXT_1, FOOTER_TEXT_2, TB_CONFIG
 
 FILE_MASK: str = "report_*.xlsx"
 
@@ -47,21 +45,20 @@ def ensure_char_style(doc: Document, name: str, *, size_pt: int = 14, font_name:
 
 # ---------- Main ----------
 def main() -> None:
-    
-    setup_logging(settings.LOG_LEVEL, settings.OUTPUT_DIR)                     # ← додай
-    log = logging.getLogger(__name__)   # ← додай
+    setup_logging(settings.LOG_LEVEL, settings.OUTPUT_DIR)  # ← додай
+    log = logging.getLogger(__name__)  # ← додай
 
     log.info("Старт генерації щоденного звіту")
-    
+
     # --- find latest XLSX ---
     try:
         xlsx_path = Path(file_utils.get_fresh_communitify_report(FILE_MASK))
     except FileNotFoundError as e:
         log.error(str(e))
         print("\n⚠️  Перевір DATA_DIR у .env та наявність файлів за маскою:", FILE_MASK)
-        input("Натисни Enter, щоб закрити...")   # щоб вікно не закрилось одразу
+        input("Натисни Enter, щоб закрити...")  # щоб вікно не закрилось одразу
         return
-    
+
     file_name_only = xlsx_path.name
 
     today = datetime.now().strftime("%d.%m.%Y")
@@ -77,13 +74,7 @@ def main() -> None:
 
     # Helper: normalize headers for robust matching (tolerant to spaces and \\ vs /)
     def _norm(s: str) -> str:
-        return (
-            str(s)
-            .strip()
-            .lower()
-            .replace(" ", "")
-            .replace("\\", "/")
-        )
+        return str(s).strip().lower().replace(" ", "").replace("\\", "/")
 
     cols = list(df.columns)
     norm_map = {c: _norm(c) for c in cols}
@@ -98,13 +89,13 @@ def main() -> None:
     # detect key column names from various possible spellings
     col_notes = find_col("Висновки", "примітки")
     col_radio = find_col("р/обмін", "р\\обмін", "радіоперехоплення")
-    col_loc   = find_col("Локація", "координати")
-    col_date  = find_col("Дата")
-    col_time  = find_col("Час")
-    col_freq  = find_col("Частота")
-    col_name  = find_col("Назвар/м", "Назвар\\м", "Назва р/м", "Назва р\\м")
-    col_who   = find_col("хто")
-    col_to    = find_col("кому")
+    col_loc = find_col("Локація", "координати")
+    col_date = find_col("Дата")
+    col_time = find_col("Час")
+    col_freq = find_col("Частота")
+    col_name = find_col("Назвар/м", "Назвар\\м", "Назва р/м", "Назва р\\м")
+    col_who = find_col("хто")
+    col_to = find_col("кому")
 
     # sort if date/time exist
     sort_cols = [c for c in [col_date, col_time] if c]
@@ -112,9 +103,12 @@ def main() -> None:
 
     # rename into canonical names if present
     rename_map = {}
-    if col_notes: rename_map[col_notes] = "Висновки"
-    if col_radio: rename_map[col_radio] = "Радіоперехоплення"
-    if col_loc:   rename_map[col_loc]   = "Локація"
+    if col_notes:
+        rename_map[col_notes] = "Висновки"
+    if col_radio:
+        rename_map[col_radio] = "Радіоперехоплення"
+    if col_loc:
+        rename_map[col_loc] = "Локація"
     sorted_df = sorted_df.rename(columns=rename_map)
 
     # drop auxiliary columns if they exist
@@ -154,11 +148,7 @@ def main() -> None:
     # header title (paragraph style + run)
     ensure_para_style(doc, "HeaderPara", size_pt=14, font_name="Times New Roman")
 
-    title = (
-        "Донесення\n"
-        "за результатами ведення радіоелектронної розвідки\n"
-        "у зоні відповідальності тактичної групи “Кремінна”"
-    )
+    title = "Донесення\n" "за результатами ведення радіоелектронної розвідки\n" "у зоні відповідальності тактичної групи “Кремінна”"
     p = doc.add_paragraph(style="HeaderPara")
     p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.add_run(title)
@@ -223,9 +213,8 @@ def main() -> None:
             os.startfile(str(doc_file))
         except Exception:
             pass
-        
-    log.info("Звіт успішно створено")
 
+    log.info("Звіт успішно створено")
 
 
 if __name__ == "__main__":
