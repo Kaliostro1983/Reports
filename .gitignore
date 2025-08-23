@@ -1,0 +1,25 @@
+# Віртуальне середовище
+.venv/
+venv/
+
+# Кеші Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Дані/звіти/вихідні файли
+data/
+output/
+
+# IDE / редактор
+.vscode/
+.idea/
+
+# Системні
+.DS_Store
+Thumbs.db
+
+# Конфігурації середовища
+.env
+.env.*
