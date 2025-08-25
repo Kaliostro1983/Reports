@@ -50,6 +50,9 @@ LOG_LEVEL=INFO
   python -m src.radioreports daily
   python -m src.radioreports weekly
   python -m src.radioreports audit
+  
+  запуск через BAT: scripts\live_frequency.bat;
+  або з термінала: python -m src.radioreports activity63 (чи live_frequency — обидва працюють).
   ```
 
 ## Формат вхідних файлів

@@ -15,6 +15,9 @@ from . import docx_utils, file_utils, report_utils, settings
 from .logging_cfg import setup_logging
 from .settings import AREAS, FOOTER_SIGN, FOOTER_TEXT_1, FOOTER_TEXT_2, TB_CONFIG
 
+# Нове: централізоване завантаження звіту
+from .io.messages_loader import load_latest_messages  # використовує .env (REPORT_FILE або найсвіжіший report_*.xlsx)
+
 FILE_MASK: str = "report_*.xlsx"
 
 
@@ -43,34 +46,43 @@ def ensure_char_style(doc: Document, name: str, *, size_pt: int = 14, font_name:
     return style
 
 
+def _resolve_report_path() -> Path:
+    """
+    1) Якщо в .env задано REPORT_FILE і він існує — беремо його;
+    2) інакше — найсвіжіший report_*.xlsx з DATA_DIR.
+    Зовнішній вигляд, період і вихідні шляхи залишаються консистентними з існуючою логікою.
+    """
+    override: Optional[Path] = getattr(settings, "REPORT_FILE", None)
+    if override and Path(override).exists():
+        return Path(override)
+    return Path(file_utils.get_fresh_communitify_report(FILE_MASK))
+
+
 # ---------- Main ----------
 def main() -> None:
-    setup_logging(settings.LOG_LEVEL, settings.OUTPUT_DIR)  # ← додай
-    log = logging.getLogger(__name__)  # ← додай
-
+    setup_logging(settings.LOG_LEVEL, settings.OUTPUT_DIR)
+    log = logging.getLogger(__name__)
     log.info("Старт генерації щоденного звіту")
 
-    # --- find latest XLSX ---
+    # --- find report path ---
     try:
-        xlsx_path = Path(file_utils.get_fresh_communitify_report(FILE_MASK))
+        xlsx_path = _resolve_report_path()
     except FileNotFoundError as e:
         log.error(str(e))
         print("\n⚠️  Перевір DATA_DIR у .env та наявність файлів за маскою:", FILE_MASK)
-        input("Натисни Enter, щоб закрити...")  # щоб вікно не закрилось одразу
+        input("Натисни Enter, щоб закрити...")
         return
 
     file_name_only = xlsx_path.name
-
     today = datetime.now().strftime("%d.%m.%Y")
     start_hour = report_utils.get_start_hour(file_name_only)
     end_hour = report_utils.get_time_end(file_name_only)[:2]
-    message = f"Create report for {file_name_only} from {start_hour} to {end_hour}"
-    log.info(message)
+    log.info("Create report for %s from %s to %s", file_name_only, start_hour, end_hour)
 
     is_hur_report = start_hour in {"11", "23"}
 
-    # --- load and transform data ---
-    df = file_utils.get_df_from_xlsx(str(xlsx_path))
+    # --- load and transform data (через централізований лоадер) ---
+    df = load_latest_messages(xlsx_path)  # -> має 'dt' (Europe/Kyiv), 'day_label', 'Частота', 'р\\обмін', інші колонки «як є»
 
     # Helper: normalize headers for robust matching (tolerant to spaces and \\ vs /)
     def _norm(s: str) -> str:
@@ -90,16 +102,19 @@ def main() -> None:
     col_notes = find_col("Висновки", "примітки")
     col_radio = find_col("р/обмін", "р\\обмін", "радіоперехоплення")
     col_loc = find_col("Локація", "координати")
-    col_date = find_col("Дата")
-    col_time = find_col("Час")
     col_freq = find_col("Частота")
     col_name = find_col("Назвар/м", "Назвар\\м", "Назва р/м", "Назва р\\м")
     col_who = find_col("хто")
     col_to = find_col("кому")
 
-    # sort if date/time exist
-    sort_cols = [c for c in [col_date, col_time] if c]
-    sorted_df = df.sort_values(by=sort_cols) if sort_cols else df.copy()
+    # sort by dt якщо є, інакше — як було (Дата/Час)
+    if "dt" in df.columns:
+        sorted_df = df.sort_values(by=["dt"])
+    else:
+        col_date = find_col("Дата")
+        col_time = find_col("Час")
+        sort_cols = [c for c in [col_date, col_time] if c]
+        sorted_df = df.sort_values(by=sort_cols) if sort_cols else df.copy()
 
     # rename into canonical names if present
     rename_map = {}
@@ -111,8 +126,8 @@ def main() -> None:
         rename_map[col_loc] = "Локація"
     sorted_df = sorted_df.rename(columns=rename_map)
 
-    # drop auxiliary columns if they exist
-    drop_cols = [c for c in [col_date, col_time, col_freq, col_name, col_who, col_to] if c]
+    # drop auxiliary columns if they exist (зберігаємо мінімально потрібне)
+    drop_cols = [c for c in [col_freq, col_name, col_who, col_to] if c]
     if drop_cols:
         sorted_df = sorted_df.drop(drop_cols, axis=1, errors="ignore")
 
@@ -124,7 +139,7 @@ def main() -> None:
     # set area id into "Локація" based on text matches in "Висновки"
     if "Локація" in df_reordered.columns and "Висновки" in df_reordered.columns:
         for idx in df_reordered.index:
-            description: str = str(df_reordered.loc[idx, "Висновки"])  # ensure string for len()
+            description: str = str(df_reordered.loc[idx, "Висновки"])
             if len(description) < 5:
                 continue
             df_reordered.loc[idx, "Локація"] = "0"
@@ -191,7 +206,7 @@ def main() -> None:
 
     # --- save file to output/<folder> ---
     root = Path(__file__).resolve().parent.parent  # repo root (where src/ lives)
-    folder_name = report_utils.get_foler_name_part(file_name_only)  # keep original util name
+    folder_name = report_utils.get_foler_name_part(file_name_only)
     out_dir = root / "output" / folder_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
